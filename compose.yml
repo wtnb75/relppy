@@ -1,0 +1,7 @@
+services:
+  rsyslog:
+    image: local/rsyslog
+    build: ./rsyslog
+    ports:
+    - 8514:514
+    - 10514:10514
