@@ -49,13 +49,14 @@ class RelpTCPHandler(socketserver.StreamRequestHandler):
     def handle(self):
         while True:
             try:
-                self._handle()
+                msg = self._readmsg()
+                self._execmsg(msg)
             except EOFError:
                 _log.info("closed?")
                 self.finish()
                 break
 
-    def _handle(self):
+    def _readmsg(self) -> Message:
         l0 = self.rfile.readline()
         if len(l0) == 0:
             raise EOFError("closed")
@@ -74,9 +75,11 @@ class RelpTCPHandler(socketserver.StreamRequestHandler):
                 _log.warning("invalid message tail: %s", data)
             else:
                 data = data[:-1]
-        msg = Message(txnr, command, data)
+        return Message(txnr, command, data)
+
+    def _execmsg(self, msg: Message):
         _log.debug("all recv: %s", msg)
-        fname = f"do_{command.decode('ascii')}"
+        fname = f"do_{msg.command.decode('ascii')}"
         try:
             if hasattr(self, fname):
                 ackadd = getattr(self, fname)(msg)
@@ -87,8 +90,8 @@ class RelpTCPHandler(socketserver.StreamRequestHandler):
         except Exception as exc:
             _log.exception("caught error: msg=%s", msg)
             if self.autoack:
-                self._ack(txnr, f"500 {exc}")
+                self._ack(msg.txnr, f"500 {exc}")
             raise
         else:
             if self.autoack:
-                self._ack(txnr, "200 OK", ackadd)
+                self._ack(msg.txnr, "200 OK", ackadd)

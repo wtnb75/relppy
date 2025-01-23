@@ -48,6 +48,10 @@ def raw_server(host, port):
         _log.info("connected: %s", addr)
         for msg in process_io(client, auto_ack=True):
             _log.info("received: %s", msg)
+            if msg.command == b"close":
+                Message(0, b"serverclose").send(client)
+                client.close()
+                break
 
 
 @cli.command()
@@ -60,7 +64,7 @@ def raw_server(host, port):
 def raw_client(host, port, message, encoding, errors):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     sock.connect((host, port))
-    Message(1, b"open", relp_ua).send(sock)
+    Message(1, b"open", relp_ua.encode(encoding, errors)).send(sock)
     recv = Message()
     recv.recv(sock)
     _log.info("receive: %s", recv)
