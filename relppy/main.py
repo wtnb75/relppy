@@ -4,7 +4,7 @@ import socket
 import socketserver
 from logging import getLogger
 from .server import RelpTCPHandler
-from .protocol import process_io, Message, nogotiation_msg
+from .protocol import process_io, Message, relp_ua
 from .version import VERSION
 
 _log = getLogger(__name__)
@@ -60,7 +60,7 @@ def raw_server(host, port):
 def raw_client(host, port, message, encoding, errors):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     sock.connect((host, port))
-    Message(1, b"open", nogotiation_msg).send(sock)
+    Message(1, b"open", relp_ua).send(sock)
     recv = Message()
     recv.recv(sock)
     _log.info("receive: %s", recv)
@@ -102,14 +102,15 @@ def server(host, port):
 def logger(host, port, message, encoding, errors):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     sock.connect((host, port))
-    Message(1, b"open", nogotiation_msg).send(sock)
+    Message(1, b"open", relp_ua.encode(encoding, errors)).send(sock)
     recv = Message()
     recv.recv(sock)
     _log.info("receive: %s", recv)
-    Message(2, b"syslog", message.encode(encoding, errors)).send(sock)
-    recv.recv(sock)
-    _log.info("receive %s", recv)
-    Message(3, b"close").send(sock)
+    for idx, msg in enumerate(message, start=2):
+        Message(idx, b"syslog", msg.encode(encoding, errors)).send(sock)
+        recv.recv(sock)
+        _log.info("receive %s", recv)
+    Message(idx+1, b"close").send(sock)
     rest = recv.recv(sock)
     _log.info("receive %s, rest=%s", recv, rest)
     rest = recv.recv(sock)
