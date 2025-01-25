@@ -110,12 +110,12 @@ def server(host, port, encoding, errors):
 @click.option("--errors", default="replace")
 @click.argument("message", nargs=-1)
 def client(host, port, message, encoding, errors):
-    cl = RelpTCPClient(address=(host, port))
-    for m in message:
-        res = cl.send_command(b"syslog", m.encode(encoding, errors)).result()
-        _log.info("sent: %s -> %s", m, res)
-    _log.debug("deleting %s", cl)
-    cl.close()
+    with RelpTCPClient(address=(host, port)) as cl:
+        for m in message:
+            res = cl.send_command(b"syslog", m.encode(encoding, errors)).result()
+            _log.info("sent: %s -> %s", m, res)
+        _log.debug("finalize %s", cl)
+    _log.debug("finished %s", cl)
 
 
 @cli.command()

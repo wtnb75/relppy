@@ -42,9 +42,15 @@ class RelpTCPHandler(socketserver.StreamRequestHandler):
 
     def do_open(self, msg: Message) -> str:
         _log.info("open %s", msg)
+        self.client_nego: dict[str, list[str]] = {}
+        for i in msg.data.splitlines():
+            if b"=" in i:
+                k, v = i.split(b"=", 1)
+                self.client_nego[k.decode()] = v.decode().split(",")
+        _log.info("client negotiation: %s", self.client_nego)
         ignore = {"do_any", "do_open", "do_close"}
         commands = ",".join([x.removeprefix("do_") for x in dir(self) if x.startswith("do_") and x not in ignore])
-        return f"{relp_ua}\ncommands={commands}"
+        return f"relp_version=1\nrelp_software={relp_ua}\ncommands={commands}"
 
     def handle(self):
         while True:

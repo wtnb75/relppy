@@ -23,8 +23,15 @@ class RelpTCPClient:
         self.executor = ThreadPoolExecutor(1, "acker")
         self.executor.submit(self.acker)
         offer = f"\nrelp_version=1\nrelp_software={relp_ua}\ncommands=syslog"
-        res = self.send_command(b"open", offer.encode("ascii")).result()
-        _log.debug("negotiated: %s", res)
+        res: bytes = self.send_command(b"open", offer.encode("ascii")).result()
+        self.negodata: dict[str, list[str]] = {}
+        for i in res.splitlines()[1:]:
+            ll = i.split(b"=", 1)
+            if len(ll) == 1:
+                self.negodata[ll[0].decode()] = []
+            else:
+                self.negodata[ll[0].decode()] = ll[1].decode().split(",")
+        _log.debug("negotiated: %s", self.negodata)
         self.lock = threading.Lock()
 
     def close(self):
@@ -47,6 +54,28 @@ class RelpTCPClient:
                 del self.sock
                 _log.debug("socket closed")
         self.executor.shutdown(wait=True)
+
+    def resend(self, txnr: int | None = None):
+        if txnr:
+            msg, ft = self.resendbuf[txnr]
+            assert not ft.done()
+            _log.info("resend %s", msg)
+            self.wfile.write(msg.pack())
+            self.wfile.flush()
+        else:
+            for msg, ft in self.resendbuf.values():
+                if not ft.done():
+                    _log.info("resend %s", msg)
+                    self.wfile.write(msg.pack())
+                    self.wfile.flush()
+                else:
+                    _log.info("skip resend %s", msg)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, ex_type, ex_value, trace):
+        self.close()
 
     def __str__(self):
         if hasattr(self, "sock"):
