@@ -1,4 +1,4 @@
-# RELP server
+# RELP server/client for python
 
 ## install
 
