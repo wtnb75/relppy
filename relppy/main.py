@@ -4,10 +4,12 @@ import socket
 import socketserver
 from logging import getLogger
 from .server import RelpTCPHandler
+from .client import RelpTCPClient
 from .protocol import process_io, Message, relp_ua
 from .version import VERSION
 
 _log = getLogger(__name__)
+relp_offer = f"\nrelp_version=1\nrelp_software={relp_ua}\ncommands=syslog,eventlog"
 
 
 @click.group(invoke_without_command=True)
@@ -64,7 +66,7 @@ def raw_server(host, port):
 def raw_client(host, port, message, encoding, errors):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     sock.connect((host, port))
-    Message(1, b"open", relp_ua.encode(encoding, errors)).send(sock)
+    Message(1, b"open", relp_offer.encode(encoding, errors)).send(sock)
     recv = Message()
     recv.recv(sock)
     _log.info("receive: %s", recv)
@@ -83,10 +85,14 @@ def raw_client(host, port, message, encoding, errors):
 @verbose_option
 @click.option("--port", type=int, default=10514)
 @click.option("--host", default="localhost")
-def server(host, port):
+@click.option("--encoding", default="utf-8")
+@click.option("--errors", default="replace")
+def server(host, port, encoding, errors):
+    syslog = getLogger("syslog")
+
     class MyHandler(RelpTCPHandler):
         def do_syslog(self, msg: Message) -> str:
-            _log.warning("msg=%s", msg.data.decode("utf-8"))
+            syslog.info(msg.data.decode(encoding, errors))
             return ""
 
     class _T(socketserver.TCPServer, socketserver.ThreadingMixIn):
@@ -103,10 +109,26 @@ def server(host, port):
 @click.option("--encoding", default="utf-8")
 @click.option("--errors", default="replace")
 @click.argument("message", nargs=-1)
+def client(host, port, message, encoding, errors):
+    cl = RelpTCPClient(address=(host, port))
+    for m in message:
+        res = cl.send_command(b"syslog", m.encode(encoding, errors)).result()
+        _log.info("sent: %s -> %s", m, res)
+    _log.debug("deleting %s", cl)
+    cl.close()
+
+
+@cli.command()
+@verbose_option
+@click.option("--port", type=int, default=10514)
+@click.option("--host", default="localhost")
+@click.option("--encoding", default="utf-8")
+@click.option("--errors", default="replace")
+@click.argument("message", nargs=-1)
 def logger(host, port, message, encoding, errors):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     sock.connect((host, port))
-    Message(1, b"open", relp_ua.encode(encoding, errors)).send(sock)
+    Message(1, b"open", relp_offer.encode(encoding, errors)).send(sock)
     recv = Message()
     recv.recv(sock)
     _log.info("receive: %s", recv)
