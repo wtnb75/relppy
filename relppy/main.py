@@ -143,6 +143,10 @@ def server(address: tuple[str, int], handler: Type[RelpStreamHandler], **kwargs)
     class _T(socketserver.TCPServer, socketserver.ThreadingMixIn):
         allow_reuse_address = True
 
+        def verify_request(self, request, client_address):
+            _log.info("connect from: %s", client_address)
+            return True
+
     srv = _T(address, handler)
     srv.serve_forever()
 
@@ -171,6 +175,7 @@ def server_tls(address: tuple[str, int], context: ssl.SSLContext, handler: Type[
         allow_reuse_address = True
 
         def verify_request(self, request, client_address):
+            _log.info("connect from: %s", client_address)
             _log.debug("ssl: version=%s, cipher=%s", request.version(), request.cipher())
             return True
 
