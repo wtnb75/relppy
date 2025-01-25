@@ -5,7 +5,7 @@ from logging import getLogger
 _log = getLogger(__name__)
 
 
-class RelpTCPHandler(socketserver.StreamRequestHandler):
+class RelpStreamHandler(socketserver.StreamRequestHandler):
     """
     RELP server
     """
