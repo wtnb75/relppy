@@ -2,6 +2,7 @@ import socket
 from concurrent.futures import ThreadPoolExecutor, Future
 import threading
 import time
+import ssl
 from .protocol import Message, relp_ua
 from logging import getLogger
 
@@ -12,20 +13,27 @@ class RelpTCPClient:
     MAX_TXNR = 999999999
 
     def __init__(self, address: tuple[str, int | None], **kwargs):
+        self.lock = threading.Lock()
         self.address = address
         self.kwargs = kwargs
+        self.sock = self.create_connection(address, **kwargs)
+        self.init_relp(**kwargs)
+        self.wfile = self.sock.makefile("wb", self.wbufsize)
+        self.rfile = self.sock.makefile("rb", self.rbufsize)
+        _log.debug("connected: %s", self)
+        self.executor = ThreadPoolExecutor(1, "acker")
+        self.executor.submit(self.acker)
+        self.relp_nego()
+
+    def init_relp(self, **kwargs):
         self.resendbuf: dict[int, tuple[Message, Future]] = {}
         self.resend_bufsize = kwargs.get("resend_size", 1024)
         self.resend_wait = kwargs.get("resend_wait", 1.0)
         self.rbufsize = kwargs.get("rbufsize", 1024*1024)
         self.wbufsize = kwargs.get("wbufsize", 1024*1024)
         self.cur_txnr = 1
-        self.sock = socket.create_connection(address, **kwargs)
-        self.wfile = self.sock.makefile("wb", self.wbufsize)
-        self.rfile = self.sock.makefile("rb", self.rbufsize)
-        _log.debug("connected: %s", self)
-        self.executor = ThreadPoolExecutor(1, "acker")
-        self.executor.submit(self.acker)
+
+    def relp_nego(self):
         offer = f"\nrelp_version=1\nrelp_software={relp_ua}\ncommands=syslog"
         res: bytes = self.send_command(b"open", offer.encode("ascii")).result()
         self.negodata: dict[str, list[str]] = {}
@@ -36,7 +44,9 @@ class RelpTCPClient:
             else:
                 self.negodata[ll[0].decode()] = ll[1].decode().split(",")
         _log.debug("negotiated: %s", self.negodata)
-        self.lock = threading.Lock()
+
+    def create_connection(self, address, **kwargs):
+        return socket.create_connection(address, **kwargs)
 
     def close(self):
         if hasattr(self, "sock"):
@@ -158,3 +168,18 @@ class RelpTCPClient:
         self.wfile.flush()
         _log.debug("message sent: %s", msg.txnr)
         return f
+
+
+class RelpUnixClient(RelpTCPClient):
+    def create_connection(self, address, **kwargs):
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(address)
+        return sock
+
+
+class RelpTlsClient(RelpTCPClient):
+    def create_connection(self, address, context: ssl.SSLContext, server_hostname=None, **kwargs):
+        sock = socket.create_connection(address, **kwargs)
+        sock = context.wrap_socket(sock, server_hostname=server_hostname)
+        _log.debug("ssl: version=%s, cipher=%s", sock.version(), sock.cipher())
+        return sock
