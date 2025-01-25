@@ -45,9 +45,9 @@ class Message:
             datalen = int(data[2])
             self.data = data[3][:datalen]
             if len(self.data) != datalen:
-                _log.warning("message length mismatch: %s", bin)
+                raise ValueError(f"message length mismatch: {bin}")
             if data[3][datalen] != ord(b"\n"):
-                _log.warning("invalid message tail? %s", str(data[3][datalen]))
+                raise ValueError(f"invalid message tail: {datalen} of {data[3]}")
             return len(bin)-len(data[3])+datalen+1
 
     def send(self, sock: socket.socket):
@@ -89,46 +89,37 @@ def process_io(ifp: socket.socket, auto_ack: bool):
         buf += buf0
         # message
         while buf:
-            i0 = buf.find(b" ")
-            if i0 == -1:
-                _log.debug("short txnr: %s", buf)
+            l0 = buf.split(b" ", 2)
+            if len(l0) != 3:
+                _log.debug("short: %s", buf)
                 break
-            txnr = int(buf[:i0])
-            i1 = buf.find(b" ", i0+1)
-            if i1 == -1:
-                _log.debug("short command: %s", buf)
-                break
-            command = buf[i0+1:i1]
-            if buf[i1+1] == b"0":
+            txnr = int(l0[0])
+            command = l0[1]
+            if l0[2].startswith(b"0\n"):
                 # no data
-                if len(buf) < i1 + 1 + 1:
-                    _log.debug("short nf: %s", buf)
-                    break
-                assert buf[i1+2] == b"\n"
                 msg = Message(txnr, command, b"")
                 _log.debug("got: %s", msg)
                 yield msg
                 if auto_ack:
                     _log.debug("send ack: %s", msg.txnr)
                     msg.sendAck(ifp)
-                buf = buf[i1+1+1:]
+                buf = l0[2][2:]
             else:
-                i2 = buf.find(b" ", i1+1)
-                if i2 == -1:
-                    _log.debug("short datalen: %s", buf)
+                l1 = l0[2].split(b" ", 1)
+                if len(l1) != 2:
                     break
-                datalen = int(buf[i1+1:i2])
-                if len(buf) < i2 + 1 + datalen + 1:
-                    _log.debug("short data+nf: %s", buf)
+                datalen = int(l1[0])
+                if len(l1[1]) < datalen:
+                    _log.debug("short data: %s", buf)
                     break
-                data = buf[i2+1:i2+1+datalen]
+                data = l1[1][:datalen]
                 _log.debug("data: %s", data)
-                assert buf[i2+1+datalen] == ord(b"\n")
+                assert l1[1][datalen] == ord(b"\n")
                 msg = Message(txnr, command, data)
                 _log.debug("got: %s", msg)
                 yield msg
                 if auto_ack:
                     _log.debug("send ack: %s", msg.txnr)
                     msg.sendAck(ifp)
-                buf = buf[i2+1+datalen+1+1:]
+                buf = l1[1][datalen+1:]
             _log.debug("rest: len=%s", len(buf))

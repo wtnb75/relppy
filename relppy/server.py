@@ -42,20 +42,29 @@ class RelpTCPHandler(socketserver.StreamRequestHandler):
 
     def do_open(self, msg: Message) -> str:
         _log.info("open %s", msg)
+        self.client_nego: dict[str, list[str]] = {}
+        for i in msg.data.splitlines():
+            if b"=" in i:
+                k, v = i.split(b"=", 1)
+                self.client_nego[k.decode()] = v.decode().split(",")
+        _log.info("client negotiation: %s", self.client_nego)
         ignore = {"do_any", "do_open", "do_close"}
-        commands = ",".join([x.removeprefix("do_") for x in dir(self) if x.startswith("do_") and x not in ignore])
-        return f"{relp_ua}\ncommands={commands}"
+        command_set = {x.removeprefix("do_") for x in dir(self) if x.startswith("do_") and x not in ignore}
+        client_commands = set(self.client_nego.get("commands", []))
+        commands = ",".join(command_set & client_commands)
+        return f"relp_version=1\nrelp_software={relp_ua}\ncommands={commands}"
 
     def handle(self):
         while True:
             try:
-                self._handle()
+                msg = self._readmsg()
+                self._execmsg(msg)
             except EOFError:
                 _log.info("closed?")
                 self.finish()
                 break
 
-    def _handle(self):
+    def _readmsg(self) -> Message:
         l0 = self.rfile.readline()
         if len(l0) == 0:
             raise EOFError("closed")
@@ -74,9 +83,11 @@ class RelpTCPHandler(socketserver.StreamRequestHandler):
                 _log.warning("invalid message tail: %s", data)
             else:
                 data = data[:-1]
-        msg = Message(txnr, command, data)
+        return Message(txnr, command, data)
+
+    def _execmsg(self, msg: Message):
         _log.debug("all recv: %s", msg)
-        fname = f"do_{command.decode('ascii')}"
+        fname = f"do_{msg.command.decode('ascii')}"
         try:
             if hasattr(self, fname):
                 ackadd = getattr(self, fname)(msg)
@@ -87,8 +98,8 @@ class RelpTCPHandler(socketserver.StreamRequestHandler):
         except Exception as exc:
             _log.exception("caught error: msg=%s", msg)
             if self.autoack:
-                self._ack(txnr, f"500 {exc}")
+                self._ack(msg.txnr, f"500 {exc}")
             raise
         else:
             if self.autoack:
-                self._ack(txnr, "200 OK", ackadd)
+                self._ack(msg.txnr, "200 OK", ackadd)
