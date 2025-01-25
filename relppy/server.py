@@ -49,7 +49,9 @@ class RelpTCPHandler(socketserver.StreamRequestHandler):
                 self.client_nego[k.decode()] = v.decode().split(",")
         _log.info("client negotiation: %s", self.client_nego)
         ignore = {"do_any", "do_open", "do_close"}
-        commands = ",".join([x.removeprefix("do_") for x in dir(self) if x.startswith("do_") and x not in ignore])
+        command_set = {x.removeprefix("do_") for x in dir(self) if x.startswith("do_") and x not in ignore}
+        client_commands = set(self.client_nego.get("commands", []))
+        commands = ",".join(command_set & client_commands)
         return f"relp_version=1\nrelp_software={relp_ua}\ncommands={commands}"
 
     def handle(self):

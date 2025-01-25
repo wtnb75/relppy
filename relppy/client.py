@@ -1,6 +1,7 @@
 import socket
 from concurrent.futures import ThreadPoolExecutor, Future
 import threading
+import time
 from .protocol import Message, relp_ua
 from logging import getLogger
 
@@ -13,6 +14,7 @@ class RelpTCPClient:
         self.kwargs = kwargs
         self.resendbuf: dict[int, tuple[Message, Future]] = {}
         self.resend_bufsize = kwargs.get("resend_size", 1024)
+        self.resend_wait = kwargs.get("resend_wait", 1.0)
         self.rbufsize = kwargs.get("rbufsize", 1024*1024)
         self.wbufsize = kwargs.get("wbufsize", 1024*1024)
         self.cur_txnr = 1
@@ -63,13 +65,17 @@ class RelpTCPClient:
             self.wfile.write(msg.pack())
             self.wfile.flush()
         else:
+            cnt = 0
             for msg, ft in self.resendbuf.values():
                 if not ft.done():
                     _log.info("resend %s", msg)
                     self.wfile.write(msg.pack())
-                    self.wfile.flush()
+                    cnt += 1
                 else:
                     _log.info("skip resend %s", msg)
+            if cnt != 0:
+                _log.info("resend %d messages", cnt)
+                self.wfile.flush()
 
     def __enter__(self):
         return self
@@ -136,7 +142,10 @@ class RelpTCPClient:
     def send_command(self, command: bytes, data: bytes) -> Future:
         _log.debug("send %s msglen=%s (%s)", command, len(data), data)
         if len(self.resendbuf) > self.resend_bufsize:
-            _log.info("buffer full: bufsize=%s", len(self.resendbuf))
+            _log.warning("buffer full: bufsize=%s", len(self.resendbuf))
+            self.resend()
+            _log.info("sleep %f second", self.resend_wait)
+            time.sleep(self.resend_wait)
         msg = Message(self.cur_txnr, command, data)
         self.cur_txnr += 1
         f = Future()
