@@ -3,3 +3,5 @@ build
 dist
 *.pyc
 __pycache__
+cover
+.coverage

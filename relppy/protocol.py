@@ -45,9 +45,9 @@ class Message:
             datalen = int(data[2])
             self.data = data[3][:datalen]
             if len(self.data) != datalen:
-                _log.warning("message length mismatch: %s", bin)
+                raise ValueError(f"message length mismatch: {bin}")
             if data[3][datalen] != ord(b"\n"):
-                _log.warning("invalid message tail? %s", str(data[3][datalen]))
+                raise ValueError(f"invalid message tail: {datalen} of {data[3]}")
             return len(bin)-len(data[3])+datalen+1
 
     def send(self, sock: socket.socket):
