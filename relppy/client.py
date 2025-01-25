@@ -9,6 +9,8 @@ _log = getLogger(__name__)
 
 
 class RelpTCPClient:
+    MAX_TXNR = 999999999
+
     def __init__(self, address: tuple[str, int | None], **kwargs):
         self.address = address
         self.kwargs = kwargs
@@ -148,6 +150,8 @@ class RelpTCPClient:
             time.sleep(self.resend_wait)
         msg = Message(self.cur_txnr, command, data)
         self.cur_txnr += 1
+        if self.cur_txnr > self.MAX_TXNR:
+            self.cur_txnr = 1
         f = Future()
         self.resendbuf[msg.txnr] = [msg, f]
         self.wfile.write(msg.pack())
