@@ -24,7 +24,7 @@ jobs:
       uses: wtnb75/actions/pdoc@main
       with:
         output-dir: docs
-        module: dlabel
+        module: relppy
     - uses: wtnb75/actions/merge-pages@main
       with:
         dirs: "cover docs"
