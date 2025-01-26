@@ -18,6 +18,8 @@ jobs:
     - name: versioning
       run: "echo \"VERSION = '${GITHUB_REF##*/v}'\" > relppy/version.py"
     - uses: wtnb75/actions/python@main
+      with:
+        pipinstall: "-r requirements.txt"
     - uses: wtnb75/actions/flake8@main
     - uses: wtnb75/actions/pytest@main
     - id: wheel
