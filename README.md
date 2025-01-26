@@ -1,5 +1,7 @@
 # RELP server/client for python
 
+[![branch](https://github.com/wtnb75/relppy/actions/workflows/branch.yml/badge.svg?branch=main)](https://github.com/wtnb75/relppy/actions/workflows/branch.yml)
+
 ## install
 
 - pip install relppy
