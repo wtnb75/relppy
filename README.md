@@ -1,5 +1,7 @@
 # RELP server/client for python
 
+[![main](https://github.com/wtnb75/relppy/actions/workflows/main.yml/badge.svg)](https://github.com/wtnb75/relppy/actions/workflows/main.yml)
+
 ## install
 
 - pip install relppy
@@ -10,11 +12,11 @@
 
 ```python
 import socketserver
-from relppy.server import RelpTCPHandler
+from relppy.server import RelpStreamHandler
 from relppy.protocol import Message
 
 
-class MyHandler(RelpTCPHandler):
+class MyHandler(RelpStreamHandler):
     def do_syslog(self, msg: Message):
         print(msg.data.decode("ascii"))
 
