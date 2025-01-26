@@ -1,8 +1,9 @@
-name: branch
+name: tag
 
 on:
   push:
-    branches-ignore: [main, gh-pages]
+    tags:
+    - 'v*'
 
 jobs:
   build:
@@ -14,16 +15,20 @@ jobs:
         path: _cache
         key: ${{ runner.os }}-pip-${{ github.sha }}
         restore-keys: ${{ runner.os }}-pip-
+    - name: versioning
+      run: "echo \"VERSION = '${GITHUB_REF##*/v}'\" > relppy/version.py"
     - uses: wtnb75/actions/python@main
     - uses: wtnb75/actions/flake8@main
     - uses: wtnb75/actions/pytest@main
-    - uses: wtnb75/actions/wheel@main
+    - id: wheel
+      uses: wtnb75/actions/wheel@main
     - id: pdoc
       uses: wtnb75/actions/pdoc@main
       with:
         output-dir: docs
         module: relppy
-    - uses: wtnb75/actions/merge-pages@main
+    - uses: wtnb75/actions/pypi-upload@main
       with:
-        dirs: "cover docs"
-        #pydist: dist
+        username: ${{ secrets.TWINE_USERNAME }}
+        password: ${{ secrets.TWINE_PASSWORD }}
+        file: dist/${{ steps.wheel.outputs.filename }}

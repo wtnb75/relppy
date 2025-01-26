@@ -1,8 +1,12 @@
-name: branch
+name: main
 
 on:
   push:
-    branches-ignore: [main, gh-pages]
+    branches: [main]
+
+permissions:
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -27,3 +31,8 @@ jobs:
       with:
         dirs: "cover docs"
         #pydist: dist
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+    - name: deploy pages
+      uses: actions/deploy-pages@v4
+      id: deployment
