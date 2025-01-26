@@ -10,11 +10,11 @@
 
 ```python
 import socketserver
-from relppy.server import RelpTCPHandler
+from relppy.server import RelpStreamHandler
 from relppy.protocol import Message
 
 
-class MyHandler(RelpTCPHandler):
+class MyHandler(RelpStreamHandler):
     def do_syslog(self, msg: Message):
         print(msg.data.decode("ascii"))
 

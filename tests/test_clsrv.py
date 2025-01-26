@@ -3,10 +3,10 @@ import socketserver
 import threading
 from relppy.protocol import Message
 from relppy.client import RelpTCPClient
-from relppy.server import RelpTCPHandler
+from relppy.server import RelpStreamHandler
 
 
-class MyHandler(RelpTCPHandler):
+class MyHandler(RelpStreamHandler):
     def do_syslog(self, msg: Message):
         return msg.data.decode()
 
