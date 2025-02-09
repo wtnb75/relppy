@@ -20,9 +20,11 @@ jobs:
         restore-keys: ${{ runner.os }}-pip-
     - uses: wtnb75/actions/python@main
       with:
-        pipinstall: "-r requirements.txt"
+        pipinstall: "-r requirements.txt pyOpenSSL"
     - uses: wtnb75/actions/flake8@main
     - uses: wtnb75/actions/pytest@main
+      with:
+        benchmark: "true"
     - uses: wtnb75/actions/wheel@main
     - id: pdoc
       uses: wtnb75/actions/pdoc@main
