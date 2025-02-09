@@ -22,6 +22,8 @@ jobs:
         pipinstall: "-r requirements.txt"
     - uses: wtnb75/actions/flake8@main
     - uses: wtnb75/actions/pytest@main
+      with:
+        benchmark: "true"
     - id: wheel
       uses: wtnb75/actions/wheel@main
     - id: pdoc
