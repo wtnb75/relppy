@@ -19,7 +19,7 @@ jobs:
       run: "echo \"VERSION = '${GITHUB_REF##*/v}'\" > relppy/version.py"
     - uses: wtnb75/actions/python@main
       with:
-        pipinstall: "-r requirements.txt"
+        pipinstall: "-r requirements.txt pyOpenSSL"
     - uses: wtnb75/actions/flake8@main
     - uses: wtnb75/actions/pytest@main
       with:
