@@ -8,34 +8,47 @@ from logging import getLogger
 
 _log = getLogger(__name__)
 
-
 class RelpTCPClient:
     MAX_TXNR = 999999999
 
-    def __init__(self, address: tuple[str, int | None], **kwargs):
+    def __init__(
+        self,
+        address: tuple[str, int | None],
+        resend_size: int=1024,
+        resend_wait: float=1.0,
+        rbufsize: int=1024*1024,
+        wbufsize: int=1024*1024,
+        **kwargs
+        ):
         self.lock = threading.Lock()
         self.address = address
         self.kwargs = kwargs
+        self.connected = False
+
+        self.cur_txnr = 1
+        self.resend_bufsize = resend_size
+        self.resend_wait = resend_wait
+        self.rbufsize = rbufsize
+        self.wbufsize = wbufsize
+        self.resendbuf: dict[int, tuple[Message, Future]] = {}
+
         self.sock = self.create_connection(address, **kwargs)
-        self.init_relp(**kwargs)
         self.wfile = self.sock.makefile("wb", self.wbufsize)
         self.rfile = self.sock.makefile("rb", self.rbufsize)
         _log.debug("connected: %s", self)
+
         self.executor = ThreadPoolExecutor(1, "acker")
         self.executor.submit(self.acker)
-        self.relp_nego()
-
-    def init_relp(self, **kwargs):
-        self.resendbuf: dict[int, tuple[Message, Future]] = {}
-        self.resend_bufsize = kwargs.get("resend_size", 1024)
-        self.resend_wait = kwargs.get("resend_wait", 1.0)
-        self.rbufsize = kwargs.get("rbufsize", 1024*1024)
-        self.wbufsize = kwargs.get("wbufsize", 1024*1024)
-        self.cur_txnr = 1
+        try:
+            self.relp_nego()
+        except Exception as e:
+            _log.warning("Failed to negotiate connection: %s" % e)
+            self.close()
+            raise
 
     def relp_nego(self):
         offer = f"\nrelp_version=1\nrelp_software={relp_ua}\ncommands=syslog"
-        res: bytes = self.send_command(b"open", offer.encode("ascii")).result()
+        res: bytes = self.send_command(b"open", offer.encode("ascii"), skip_buffer=True).result()
         self.negodata: dict[str, list[str]] = {}
         for i in res.splitlines()[1:]:
             ll = i.split(b"=", 1)
@@ -46,7 +59,9 @@ class RelpTCPClient:
         _log.debug("negotiated: %s", self.negodata)
 
     def create_connection(self, address, **kwargs):
-        return socket.create_connection(address, **kwargs)
+        sock = socket.create_connection(address, **kwargs)
+        self.connected = True
+        return sock
 
     def close(self):
         if hasattr(self, "sock"):
@@ -69,7 +84,7 @@ class RelpTCPClient:
                 _log.debug("socket closed")
         self.executor.shutdown(wait=True)
 
-    def resend(self, txnr: int | None = None):
+    def resend(self, txnr: int | None = None, new_conn: bool=False):
         if txnr:
             msg, ft = self.resendbuf[txnr]
             assert not ft.done()
@@ -80,6 +95,9 @@ class RelpTCPClient:
             cnt = 0
             for msg, ft in self.resendbuf.values():
                 if not ft.done():
+                    if new_conn:
+                        msg.txnr = self.cur_txnr
+                        self.cur_txnr += 1
                     _log.info("resend %s", msg)
                     self.wfile.write(msg.pack())
                     cnt += 1
@@ -149,15 +167,40 @@ class RelpTCPClient:
                 break
             else:
                 _log.warning("got not ack: %s (%s)", command, bin)
+        self.connected = False
         _log.warning("connection closed")
 
-    def send_command(self, command: bytes, data: bytes) -> Future:
+    def send_command(self, command: bytes, data: bytes, skip_buffer: bool=False) -> Future:
         _log.debug("send %s msglen=%s (%s)", command, len(data), data)
-        if len(self.resendbuf) > self.resend_bufsize:
+        # Check if we are connected.
+        new_conn = False
+        if not self.connected:
+            self.executor.shutdown(wait=True)
+            with self.lock:
+                if hasattr(self, "sock"):
+                    self.rfile.close()
+                    self.wfile.close()
+                    self.sock.close()
+                    del self.sock
+            self.cur_txnr = 1
+            self.sock = self.create_connection(self.address, **self.kwargs)
+            self.wfile = self.sock.makefile("wb", self.wbufsize)
+            self.rfile = self.sock.makefile("rb", self.rbufsize)
+            self.executor = ThreadPoolExecutor(1, "acker")
+            self.executor.submit(self.acker)
+            try:
+                self.relp_nego()
+            except Exception as e:
+                _log.warning("Failed to negotiate connection: %s" % e)
+                raise
+            new_conn = True
+
+        if len(self.resendbuf) > self.resend_bufsize and not skip_buffer:
             _log.warning("buffer full: bufsize=%s", len(self.resendbuf))
-            self.resend()
+            self.resend(new_conn=new_conn)
             _log.info("sleep %f second", self.resend_wait)
             time.sleep(self.resend_wait)
+
         msg = Message(self.cur_txnr, command, data)
         self.cur_txnr += 1
         if self.cur_txnr > self.MAX_TXNR:
@@ -174,6 +217,7 @@ class RelpUnixClient(RelpTCPClient):
     def create_connection(self, address, **kwargs):
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.connect(address)
+        self.connected = True
         return sock
 
 
@@ -182,4 +226,5 @@ class RelpTlsClient(RelpTCPClient):
         sock = socket.create_connection(address, **kwargs)
         sock = context.wrap_socket(sock, server_hostname=server_hostname)
         _log.debug("ssl: version=%s, cipher=%s", sock.version(), sock.cipher())
+        self.connected = True
         return sock
