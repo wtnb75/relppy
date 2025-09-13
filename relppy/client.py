@@ -23,7 +23,12 @@ class RelpTCPClient:
         _log.debug("connected: %s", self)
         self.executor = ThreadPoolExecutor(1, "acker")
         self.executor.submit(self.acker)
-        self.relp_nego()
+        try:
+            self.relp_nego()
+        except Exception as e:
+            _log.warning("Failed to negotiate connection: %s" % e)
+            self.close()
+            raise
 
     def init_relp(self, **kwargs):
         self.resendbuf: dict[int, tuple[Message, Future]] = {}
