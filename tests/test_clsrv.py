@@ -40,7 +40,7 @@ class TestClSrv(unittest.TestCase):
         res = []
         expected = [f"200 OK\nhello {x}".encode() for x in range(10)]
         with RelpTCPClient(self.srv.server_address) as cl:
-            cl.cur_txnr = cl.MAX_TXNR-5
+            cl.cur_txnr = cl.MAX_TXNR - 5
             for i in range(10):
                 res.append(cl.send_command(b"syslog", f"hello {i}".encode()))
 

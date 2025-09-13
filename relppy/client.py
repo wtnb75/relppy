@@ -8,18 +8,19 @@ from logging import getLogger
 
 _log = getLogger(__name__)
 
+
 class RelpTCPClient:
     MAX_TXNR = 999999999
 
     def __init__(
         self,
         address: tuple[str, int | None],
-        resend_size: int=1024,
-        resend_wait: float=1.0,
-        rbufsize: int=1024*1024,
-        wbufsize: int=1024*1024,
-        **kwargs
-        ):
+        resend_size: int = 1024,
+        resend_wait: float = 1.0,
+        rbufsize: int = 1024 * 1024,
+        wbufsize: int = 1024 * 1024,
+        **kwargs,
+    ):
         self.lock = threading.Lock()
         self.address = address
         self.kwargs = kwargs
@@ -84,7 +85,7 @@ class RelpTCPClient:
                 _log.debug("socket closed")
         self.executor.shutdown(wait=True)
 
-    def resend(self, txnr: int | None = None, new_conn: bool=False):
+    def resend(self, txnr: int | None = None, new_conn: bool = False):
         if txnr:
             msg, ft = self.resendbuf[txnr]
             assert not ft.done()
@@ -147,7 +148,7 @@ class RelpTCPClient:
                 datalen = int(token[2])
                 data = token[3]
                 if datalen > len(data):
-                    data += self.rfile.read(datalen-len(data)+1)
+                    data += self.rfile.read(datalen - len(data) + 1)
                 _log.debug("message: %s msglen=%s", command, len(data))
             data = data.removesuffix(b"\n")
             _log.debug("got txnr=%s, command=%s, datalen=%s/%s", txnr, command, datalen, len(data))
@@ -170,7 +171,7 @@ class RelpTCPClient:
         self.connected = False
         _log.warning("connection closed")
 
-    def send_command(self, command: bytes, data: bytes, skip_buffer: bool=False) -> Future:
+    def send_command(self, command: bytes, data: bytes, skip_buffer: bool = False) -> Future:
         _log.debug("send %s msglen=%s (%s)", command, len(data), data)
         # Check if we are connected.
         new_conn = False
