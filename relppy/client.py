@@ -64,9 +64,17 @@ class RelpTCPClient:
         self.connected = True
         return sock
 
-    def close(self):
+    def close(self, timeout=1):
         if hasattr(self, "sock"):
             _log.debug("closing %s", self)
+            if timeout > 0:
+                _log.debug("waiting for timeout %s", timeout)
+                wait_counter = 0
+                while len(self.resendbuf) > 0:
+                    wait_counter += 1
+                    if wait_counter >= (timeout * 100):
+                        break
+                    time.sleep(0.01)
             resendbuf = self.resendbuf
             self.resendbuf = {}
             _log.debug("resendbuf: %s", len(resendbuf))
