@@ -204,7 +204,6 @@ class RelpTCPClient:
                 except Exception as e:
                     _log.warning("received wrong send data: %s", send_data)
                     continue
-            _log.debug("send %s msglen=%s (%s)", command, len(data), data)
             if not skip_buffer:
                 try_resend = False
                 if len(self.resendbuf) > self.resend_bufsize:
@@ -220,6 +219,7 @@ class RelpTCPClient:
                     time.sleep(self.resend_wait)
 
             if command:
+                _log.debug("send %s msglen=%s (%s)", command, len(data), data)
                 try:
                     msg = Message(self.cur_txnr, command, data)
                     self.cur_txnr += 1
@@ -233,7 +233,6 @@ class RelpTCPClient:
                     send_status = {'status':True, 'future':f}
                 except Exception as e:
                     send_status = {'status':False, 'exception':e}
-                #self.recv_q.put(send_status, timeout=1)
                 self.recv_q.put(send_status)
 
     def send_command(self, command: bytes, data: bytes, skip_buffer: bool = False) -> Future:
