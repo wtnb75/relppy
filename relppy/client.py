@@ -69,12 +69,7 @@ class RelpTCPClient:
             _log.debug("closing %s", self)
             if timeout > 0:
                 _log.debug("waiting for timeout %s", timeout)
-                wait_counter = 0
-                while len(self.resendbuf) > 0:
-                    wait_counter += 1
-                    if wait_counter >= (timeout * 100):
-                        break
-                    time.sleep(0.01)
+                concurrent.futures.wait([x[1] for x in self.resendbuf.values()], timeout)
             resendbuf = self.resendbuf
             self.resendbuf = {}
             _log.debug("resendbuf: %s", len(resendbuf))
