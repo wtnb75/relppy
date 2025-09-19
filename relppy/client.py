@@ -97,6 +97,7 @@ class RelpTCPClient:
                 self.sock.close()
                 del self.sock
                 _log.debug("socket closed")
+        self.send_q.put("close")
         self.ack_executor.shutdown(wait=True)
         self.send_executor.shutdown(wait=True)
 
@@ -196,6 +197,8 @@ class RelpTCPClient:
             except queue.Empty:
                 command = None
             else:
+                if send_data == "close":
+                    break
                 try:
                     command = send_data['command']
                     data = send_data['data']
