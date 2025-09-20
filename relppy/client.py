@@ -36,7 +36,7 @@ class RelpTCPClient:
         self.last_resend = 0
         self.rbufsize = rbufsize
         self.wbufsize = wbufsize
-        self.resendbuf: dict[int, tuple[Message, Future]] = {}
+        self.resendbuf: dict[int, tuple[float, Message, Future]] = {}
 
         self.sock = self.create_connection(address, **kwargs)
         self.wfile = self.sock.makefile("wb", self.wbufsize)
@@ -79,13 +79,13 @@ class RelpTCPClient:
             _log.debug("closing %s", self)
             if timeout > 0:
                 _log.debug("waiting for timeout %s", timeout)
-                concurrent.futures.wait([x[1] for x in self.resendbuf.values()], timeout)
+                concurrent.futures.wait([x[2] for x in self.resendbuf.values()], timeout)
             resendbuf = self.resendbuf
             self.resendbuf = {}
             _log.debug("resendbuf: %s", len(resendbuf))
-            for msgft in resendbuf.values():
-                _log.info("cancel msg: %s", msgft[0])
-                msgft[1].cancel()
+            for stmsgft in resendbuf.values():
+                _log.info("cancel msg: %s", stmsgft[1])
+                stmsgft[2].cancel()
             if self.connected:
                 _log.debug("sending close: %s", self)
                 res = self.send_command(b"close", b"").result()
@@ -103,14 +103,16 @@ class RelpTCPClient:
 
     def resend(self, txnr: int | None = None, new_conn: bool = False):
         if txnr:
-            msg, ft = self.resendbuf[txnr]
+            sent_time, msg, ft = self.resendbuf[txnr]
             assert not ft.done()
             _log.info("resend %s", msg)
             self.wfile.write(msg.pack())
             self.wfile.flush()
         else:
             cnt = 0
-            for msg, ft in self.resendbuf.values():
+            for sent_time, msg, ft in self.resendbuf.values():
+                if (time.time() - sent_time) < self.resend_interval:
+                    continue
                 if not ft.done():
                     if new_conn:
                         msg.txnr = self.cur_txnr
@@ -138,7 +140,7 @@ class RelpTCPClient:
 
     def _gotack(self, txnr: int, data: bytes):
         try:
-            _, f = self.resendbuf.pop(txnr)
+            f = self.resendbuf.pop(txnr)[2]
             _log.debug("setting result %s <- %s", txnr, data)
             f.set_result(data)
         except KeyError:
@@ -229,7 +231,7 @@ class RelpTCPClient:
                     if self.cur_txnr > self.MAX_TXNR:
                         self.cur_txnr = 1
                     f = Future()
-                    self.resendbuf[msg.txnr] = [msg, f]
+                    self.resendbuf[msg.txnr] = [time.time(), msg, f]
                     self.wfile.write(msg.pack())
                     self.wfile.flush()
                     _log.debug("message sent: %s", msg.txnr)
