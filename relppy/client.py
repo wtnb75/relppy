@@ -3,6 +3,7 @@ import concurrent
 from concurrent.futures import ThreadPoolExecutor, Future
 import threading
 import time
+import queue
 import ssl
 from .protocol import Message, relp_ua
 from logging import getLogger
@@ -18,6 +19,7 @@ class RelpTCPClient:
         address: tuple[str, int | None],
         resend_size: int = 1024,
         resend_wait: float = 1.0,
+        resend_interval: int = 5,
         rbufsize: int = 1024 * 1024,
         wbufsize: int = 1024 * 1024,
         **kwargs,
@@ -30,17 +32,24 @@ class RelpTCPClient:
         self.cur_txnr = 1
         self.resend_bufsize = resend_size
         self.resend_wait = resend_wait
+        self.resend_interval = resend_interval
+        self.last_resend = 0
         self.rbufsize = rbufsize
         self.wbufsize = wbufsize
-        self.resendbuf: dict[int, tuple[Message, Future]] = {}
+        self.resendbuf: dict[int, tuple[float, Message, Future]] = {}
 
         self.sock = self.create_connection(address, **kwargs)
         self.wfile = self.sock.makefile("wb", self.wbufsize)
         self.rfile = self.sock.makefile("rb", self.rbufsize)
         _log.debug("connected: %s", self)
 
-        self.executor = ThreadPoolExecutor(1, "acker")
-        self.executor.submit(self.acker)
+        self.send_q = queue.Queue()
+        self.recv_q = queue.Queue()
+
+        self.ack_executor = ThreadPoolExecutor(1, "acker")
+        self.ack_executor.submit(self.acker)
+        self.send_executor = ThreadPoolExecutor(1, "sender")
+        self.send_executor.submit(self.sender)
         try:
             self.relp_nego()
         except Exception as e:
@@ -70,16 +79,17 @@ class RelpTCPClient:
             _log.debug("closing %s", self)
             if timeout > 0:
                 _log.debug("waiting for timeout %s", timeout)
-                concurrent.futures.wait([x[1] for x in self.resendbuf.values()], timeout)
+                concurrent.futures.wait([x[2] for x in self.resendbuf.values()], timeout)
             resendbuf = self.resendbuf
             self.resendbuf = {}
             _log.debug("resendbuf: %s", len(resendbuf))
-            for msgft in resendbuf.values():
-                _log.info("cancel msg: %s", msgft[0])
-                msgft[1].cancel()
-            _log.debug("sending close: %s", self)
-            res = self.send_command(b"close", b"").result()
-            _log.debug("close result: %s", res)
+            for stmsgft in resendbuf.values():
+                _log.info("cancel msg: %s", stmsgft[1])
+                stmsgft[2].cancel()
+            if self.connected:
+                _log.debug("sending close: %s", self)
+                res = self.send_command(b"close", b"").result()
+                _log.debug("close result: %s", res)
         with self.lock:
             if hasattr(self, "sock"):
                 self.rfile.close()
@@ -87,18 +97,22 @@ class RelpTCPClient:
                 self.sock.close()
                 del self.sock
                 _log.debug("socket closed")
-        self.executor.shutdown(wait=True)
+        self.send_q.put("close")
+        self.ack_executor.shutdown(wait=True)
+        self.send_executor.shutdown(wait=True)
 
     def resend(self, txnr: int | None = None, new_conn: bool = False):
         if txnr:
-            msg, ft = self.resendbuf[txnr]
+            sent_time, msg, ft = self.resendbuf[txnr]
             assert not ft.done()
             _log.info("resend %s", msg)
             self.wfile.write(msg.pack())
             self.wfile.flush()
         else:
             cnt = 0
-            for msg, ft in self.resendbuf.values():
+            for sent_time, msg, ft in self.resendbuf.values():
+                if (time.time() - sent_time) < self.resend_interval:
+                    continue
                 if not ft.done():
                     if new_conn:
                         msg.txnr = self.cur_txnr
@@ -111,6 +125,7 @@ class RelpTCPClient:
             if cnt != 0:
                 _log.info("resend %d messages", cnt)
                 self.wfile.flush()
+        self.last_resend = time.time()
 
     def __enter__(self):
         return self
@@ -125,7 +140,7 @@ class RelpTCPClient:
 
     def _gotack(self, txnr: int, data: bytes):
         try:
-            _, f = self.resendbuf.pop(txnr)
+            f = self.resendbuf.pop(txnr)[2]
             _log.debug("setting result %s <- %s", txnr, data)
             f.set_result(data)
         except KeyError:
@@ -175,12 +190,63 @@ class RelpTCPClient:
         self.connected = False
         _log.warning("connection closed")
 
+    def sender(self):
+        while True:
+            if not self.connected:
+                break
+            try:
+                send_data = self.send_q.get(timeout=1)
+            except queue.Empty:
+                command = None
+            else:
+                if send_data == "close":
+                    break
+                try:
+                    command = send_data['command']
+                    data = send_data['data']
+                    skip_buffer = send_data['skip_buffer']
+                    new_conn = send_data['new_conn']
+                except Exception as e:
+                    _log.warning("received wrong send data: %s", send_data)
+                    continue
+            if not skip_buffer:
+                try_resend = False
+                if len(self.resendbuf) > self.resend_bufsize:
+                    _log.warning("buffer full: bufsize=%s", len(self.resendbuf))
+                    try_resend = True
+                if (time.time() - self.last_resend) >= self.resend_interval:
+                    if len(self.resendbuf) > 1:
+                        _log.warning("buffer resend interval reached: resend_interval=%s", self.resend_interval)
+                        try_resend = True
+                if try_resend:
+                    self.resend(new_conn=new_conn)
+                    _log.info("sleep %f second", self.resend_wait)
+                    time.sleep(self.resend_wait)
+
+            if command:
+                _log.debug("send %s msglen=%s (%s)", command, len(data), data)
+                try:
+                    msg = Message(self.cur_txnr, command, data)
+                    self.cur_txnr += 1
+                    if self.cur_txnr > self.MAX_TXNR:
+                        self.cur_txnr = 1
+                    f = Future()
+                    self.resendbuf[msg.txnr] = [time.time(), msg, f]
+                    self.wfile.write(msg.pack())
+                    self.wfile.flush()
+                    _log.debug("message sent: %s", msg.txnr)
+                    send_status = {'status':True, 'future':f}
+                except Exception as e:
+                    send_status = {'status':False, 'exception':e}
+                self.recv_q.put(send_status)
+
     def send_command(self, command: bytes, data: bytes, skip_buffer: bool = False) -> Future:
         _log.debug("send %s msglen=%s (%s)", command, len(data), data)
         # Check if we are connected.
         new_conn = False
         if not self.connected:
-            self.executor.shutdown(wait=True)
+            self.ack_executor.shutdown(wait=True)
+            self.send_executor.shutdown(wait=True)
             with self.lock:
                 if hasattr(self, "sock"):
                     self.rfile.close()
@@ -189,34 +255,36 @@ class RelpTCPClient:
                     del self.sock
             self.cur_txnr = 1
             self.sock = self.create_connection(self.address, **self.kwargs)
+
             self.wfile = self.sock.makefile("wb", self.wbufsize)
             self.rfile = self.sock.makefile("rb", self.rbufsize)
-            self.executor = ThreadPoolExecutor(1, "acker")
-            self.executor.submit(self.acker)
+
+            self.ack_executor = ThreadPoolExecutor(1, "acker")
+            self.ack_executor.submit(self.acker)
+
+            self.send_executor = ThreadPoolExecutor(1, "sender")
+            self.send_executor.submit(self.sender)
+
             try:
                 self.relp_nego()
             except Exception as e:
                 _log.warning("Failed to negotiate connection: %s" % e)
                 raise
             new_conn = True
-
-        if len(self.resendbuf) > self.resend_bufsize and not skip_buffer:
-            _log.warning("buffer full: bufsize=%s", len(self.resendbuf))
-            self.resend(new_conn=new_conn)
-            _log.info("sleep %f second", self.resend_wait)
-            time.sleep(self.resend_wait)
-
-        msg = Message(self.cur_txnr, command, data)
-        self.cur_txnr += 1
-        if self.cur_txnr > self.MAX_TXNR:
-            self.cur_txnr = 1
-        f = Future()
-        self.resendbuf[msg.txnr] = [msg, f]
-        self.wfile.write(msg.pack())
-        self.wfile.flush()
-        _log.debug("message sent: %s", msg.txnr)
-        return f
-
+        send_data = {
+                    'command'       : command,
+                    'data'          : data,
+                    'new_conn'      : new_conn,
+                    'skip_buffer'   : skip_buffer,
+                    }
+        self.send_q.put(send_data)
+        status_data = self.recv_q.get()
+        send_status = status_data['status']
+        if send_status is not True:
+            exception = status_data['exception']
+            raise exception
+        future = status_data['future']
+        return future
 
 class RelpUnixClient(RelpTCPClient):
     def create_connection(self, address, **kwargs):
