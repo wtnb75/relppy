@@ -280,7 +280,7 @@ class RelpTCPClient:
         send_status = status_data['status']
         if send_status is not True:
             exception = status_data['exception']
-            raise exception()
+            raise exception
         future = status_data['future']
         return future
 
