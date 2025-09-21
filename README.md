@@ -67,7 +67,7 @@ loggers on exit.
 import logging
 from relppy.log_handler import RelpHandler
 
-log_handler = RelpHandler(address="server:port", facility="LOCAL7")
+log_handler = RelpHandler(address=(server, port), facility="LOCAL7")
 
 formatter = logging.Formatter('%(name)s: [%(levelname)s] %(message)s')
 log_handler.setFormatter(formatter)
@@ -89,7 +89,7 @@ context = ssl.create_default_context(
 context.load_cert_chain(certfile="/path/to/client-cert.pem",
                         keyfile="/path/to/client-key.pem")
 
-log_handler = RelpHandler(address="server:port",
+log_handler = RelpHandler(address=(server, port),
                         facility="LOCAL7",
                         context=context)
 
