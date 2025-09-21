@@ -206,7 +206,7 @@ class RelpTCPClient:
                     data = send_data['data']
                     skip_buffer = send_data['skip_buffer']
                     new_conn = send_data['new_conn']
-                except Exception as e:
+                except Exception:
                     _log.warning("received wrong send data: %s", send_data)
                     continue
             if not skip_buffer:
@@ -285,6 +285,7 @@ class RelpTCPClient:
             raise exception
         future = status_data['future']
         return future
+
 
 class RelpUnixClient(RelpTCPClient):
     def create_connection(self, address, **kwargs):

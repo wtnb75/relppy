@@ -7,6 +7,7 @@ import logging.handlers
 from .client import RelpTlsClient
 from .client import RelpTCPClient
 
+
 class RelpHandler(logging.handlers.SysLogHandler):
     def __init__(
         self,
@@ -24,7 +25,7 @@ class RelpHandler(logging.handlers.SysLogHandler):
         facility_id = "LOG_%s" % facility
         try:
             facility = getattr(logging.handlers.SysLogHandler, facility_id)
-        except:
+        except Exception:
             msg = "Unknown facility: %s" % facility
             raise Exception(msg)
 
@@ -112,7 +113,7 @@ class RelpHandler(logging.handlers.SysLogHandler):
                         # Try to resend message.
                         try:
                             self.relp_client.send_command(b"syslog", msg)
-                        except Exception as e:
+                        except Exception:
                             self.connection_broken = True
                             spool_message = True
                         else:

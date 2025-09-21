@@ -250,6 +250,7 @@ def logger_tls_options(func):
         return func(context=context, **kwargs)
     return _
 
+
 @cli.command()
 @hostport_option
 @logger_tls_options
@@ -280,6 +281,7 @@ def logger_tls(address: tuple[str, int], message: str, logger_name: str,
     finally:
         log_handler.close()
 
+
 @cli.command()
 @hostport_option
 @click.option("--logger-name", type=str, default="RELP", show_default=True)
@@ -308,6 +310,7 @@ def logger(address: tuple[str, int], message: str, logger_name: str, log_level: 
         log_method(message)
     finally:
         log_handler.close()
+
 
 if __name__ == "__main__":
     cli()
