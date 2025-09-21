@@ -215,7 +215,7 @@ class RelpTCPClient:
                     _log.warning("buffer full: bufsize=%s", len(self.resendbuf))
                     try_resend = True
                 if (time.time() - self.last_resend) >= self.resend_interval:
-                    if len(self.resendbuf) > 1:
+                    if len(self.resendbuf) > 0:
                         _log.warning("buffer resend interval reached: resend_interval=%s", self.resend_interval)
                         try_resend = True
                 if try_resend:
