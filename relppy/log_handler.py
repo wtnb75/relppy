@@ -127,5 +127,5 @@ class RelpHandler(logging.handlers.SysLogHandler):
                         self.spool_method(record)
                     except Exception as e:
                         msg = "Failed to spool record: %s" % e
-                        self.logging.warning(msg)
+                        self.logger.warning(msg)
             self.handleError(record)
