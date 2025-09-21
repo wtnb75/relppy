@@ -4,9 +4,11 @@ import socket
 import socketserver
 import ssl
 import codecs
+import logging
 from typing import Type
 from logging import getLogger
 from .server import RelpStreamHandler
+from .log_handler import RelpHandler
 from .client import RelpTCPClient, RelpUnixClient, RelpTlsClient
 from .protocol import process_io, Message, relp_ua
 from .version import VERSION
@@ -232,6 +234,80 @@ def client_tls(address: tuple[str, int], message: tuple[str], encoding: str, err
         _log.debug("finalize %s", cl)
     _log.debug("finished %s", cl)
 
+
+def logger_tls_options(func):
+    @click.option("--cafile", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+    @click.option("--certfile", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+    @click.option("--keyfile", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+    @functools.wraps(func)
+    def _(cafile, certfile, keyfile, **kwargs):
+        context = ssl.create_default_context(
+            purpose=ssl.Purpose.SERVER_AUTH,
+            cafile=cafile,
+        )
+        context.load_cert_chain(certfile=certfile,
+                                keyfile=keyfile)
+        return func(context=context, **kwargs)
+    return _
+
+@cli.command()
+@hostport_option
+@logger_tls_options
+@click.option("--logger-name", type=str, default="RELP", show_default=True)
+@click.option("--log-level", type=str, default="INFO", show_default=True)
+@click.option("--priority", type=str, default="info", show_default=True)
+@click.option("--facility", type=str, default="LOCAL7", show_default=True)
+@click.argument("message", nargs=1)
+def logger_tls(address: tuple[str, int], message: str, logger_name: str,
+    log_level: str, priority: str, facility: str, context: ssl.SSLContext, **kwargs):
+    """RELP logging handler (TLS)"""
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(log_level)
+    log_handler = RelpHandler(address=address, context=context, facility=facility)
+    try:
+        log_method = getattr(logger, priority)
+    except Exception as e:
+        msg = "Unvalid priority: %s: %s" % (priority, e)
+        raise Exception(msg)
+
+    formatter = logging.Formatter('%(name)s: [%(levelname)s] %(message)s')
+    log_handler.setFormatter(formatter)
+
+    logger.addHandler(log_handler)
+
+    try:
+        log_method(message)
+    finally:
+        log_handler.close()
+
+@cli.command()
+@hostport_option
+@click.option("--logger-name", type=str, default="RELP", show_default=True)
+@click.option("--log-level", type=str, default="INFO", show_default=True)
+@click.option("--priority", type=str, default="info", show_default=True)
+@click.option("--facility", type=str, default="LOCAL7", show_default=True)
+@click.argument("message", nargs=1)
+def logger(address: tuple[str, int], message: str, logger_name: str, log_level: str,
+    priority: str, facility: str, **kwargs):
+    """RELP logging handler"""
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(log_level)
+    log_handler = RelpHandler(address=address, facility=facility)
+    try:
+        log_method = getattr(logger, priority)
+    except Exception as e:
+        msg = "Unvalid priority: %s: %s" % (priority, e)
+        raise Exception(msg)
+
+    formatter = logging.Formatter('%(name)s: [%(levelname)s] %(message)s')
+    log_handler.setFormatter(formatter)
+
+    logger.addHandler(log_handler)
+
+    try:
+        log_method(message)
+    finally:
+        log_handler.close()
 
 if __name__ == "__main__":
     cli()
