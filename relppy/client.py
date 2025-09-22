@@ -1,6 +1,5 @@
 import socket
-import concurrent
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor, Future, wait as futures_wait
 import threading
 import time
 import queue
@@ -79,7 +78,7 @@ class RelpTCPClient:
             _log.debug("closing %s", self)
             if timeout > 0:
                 _log.debug("waiting for timeout %s", timeout)
-                concurrent.futures.wait([x[2] for x in self.resendbuf.values()], timeout)
+                futures_wait([x[2] for x in self.resendbuf.values()], timeout)
             resendbuf = self.resendbuf
             self.resendbuf = {}
             _log.debug("resendbuf: %s", len(resendbuf))
@@ -202,43 +201,48 @@ class RelpTCPClient:
                 if send_data == "close":
                     break
                 try:
-                    command = send_data['command']
-                    data = send_data['data']
-                    skip_buffer = send_data['skip_buffer']
-                    new_conn = send_data['new_conn']
+                    command = send_data["command"]
+                    data = send_data["data"]
+                    skip_buffer = send_data["skip_buffer"]
+                    new_conn = send_data["new_conn"]
                 except Exception:
                     _log.warning("received wrong send data: %s", send_data)
                     continue
             if not skip_buffer:
-                try_resend = False
-                if len(self.resendbuf) > self.resend_bufsize:
-                    _log.warning("buffer full: bufsize=%s", len(self.resendbuf))
-                    try_resend = True
-                if (time.time() - self.last_resend) >= self.resend_interval:
-                    if len(self.resendbuf) > 0:
-                        _log.warning("buffer resend interval reached: resend_interval=%s", self.resend_interval)
-                        try_resend = True
-                if try_resend:
-                    self.resend(new_conn=new_conn)
-                    _log.info("sleep %f second", self.resend_wait)
-                    time.sleep(self.resend_wait)
+                self.try_resend(new_conn)
+            self.sender_send(command, data)
 
-            if command:
-                _log.debug("send %s msglen=%s (%s)", command, len(data), data)
-                try:
-                    msg = Message(self.cur_txnr, command, data)
-                    self.cur_txnr += 1
-                    if self.cur_txnr > self.MAX_TXNR:
-                        self.cur_txnr = 1
-                    f = Future()
-                    self.resendbuf[msg.txnr] = [time.time(), msg, f]
-                    self.wfile.write(msg.pack())
-                    self.wfile.flush()
-                    _log.debug("message sent: %s", msg.txnr)
-                    send_status = {'status': True, 'future': f}
-                except Exception as e:
-                    send_status = {'status': False, 'exception': e}
-                self.recv_q.put(send_status)
+    def try_resend(self, new_conn):
+        try_resend = False
+        if len(self.resendbuf) > self.resend_bufsize:
+            _log.warning("buffer full: bufsize=%s", len(self.resendbuf))
+            try_resend = True
+        if (time.time() - self.last_resend) >= self.resend_interval:
+            if len(self.resendbuf) > 0:
+                _log.warning("buffer resend interval reached: resend_interval=%s", self.resend_interval)
+                try_resend = True
+        if try_resend:
+            self.resend(new_conn=new_conn)
+            _log.info("sleep %f second", self.resend_wait)
+            time.sleep(self.resend_wait)
+
+    def sender_send(self, command, data):
+        if command:
+            _log.debug("send %s msglen=%s (%s)", command, len(data), data)
+            try:
+                msg = Message(self.cur_txnr, command, data)
+                self.cur_txnr += 1
+                if self.cur_txnr > self.MAX_TXNR:
+                    self.cur_txnr = 1
+                f = Future()
+                self.resendbuf[msg.txnr] = (time.time(), msg, f)
+                self.wfile.write(msg.pack())
+                self.wfile.flush()
+                _log.debug("message sent: %s", msg.txnr)
+                send_status = {"status": True, "future": f}
+            except Exception as e:
+                send_status = {"status": False, "exception": e}
+            self.recv_q.put(send_status)
 
     def send_command(self, command: bytes, data: bytes, skip_buffer: bool = False) -> Future:
         _log.debug("send %s msglen=%s (%s)", command, len(data), data)
@@ -272,18 +276,18 @@ class RelpTCPClient:
                 raise
             new_conn = True
         send_data = {
-            'command': command,
-            'data': data,
-            'new_conn': new_conn,
-            'skip_buffer': skip_buffer,
+            "command": command,
+            "data": data,
+            "new_conn": new_conn,
+            "skip_buffer": skip_buffer,
         }
         self.send_q.put(send_data)
         status_data = self.recv_q.get()
-        send_status = status_data['status']
+        send_status = status_data["status"]
         if send_status is not True:
-            exception = status_data['exception']
+            exception = status_data["exception"]
             raise exception
-        future = status_data['future']
+        future = status_data["future"]
         return future
 
 
