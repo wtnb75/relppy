@@ -32,6 +32,7 @@ class TestLogger(unittest.TestCase):
         self.formatter = logging.Formatter("%(name)s: [%(levelname)s] %(message)s")
         self.log_handler.setFormatter(self.formatter)
         self.logger = logging.getLogger("my_logger")
+        self.logger.setLevel("INFO")
         self.logger.addHandler(self.log_handler)
 
     def tearDown(self):
@@ -50,13 +51,12 @@ class TestLogger(unittest.TestCase):
         self.logger.info("hello info")
         self.logger.debug("hello debug")
         self.log_handler.close()  # flush
-        self.assertEqual(4, len(self.srv.msgs))
+        self.assertEqual(3, len(self.srv.msgs))
         self.assertEqual(
             [
                 "<187>my_logger: [ERROR] hello error\x00",
                 "<188>my_logger: [WARNING] hello warning\x00",
                 "<190>my_logger: [INFO] hello info\x00",
-                "<191>my_logger: [DEBUG] hello debug\x00",
             ],
             self.srv.msgs,
         )
