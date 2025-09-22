@@ -235,9 +235,9 @@ class RelpTCPClient:
                     self.wfile.write(msg.pack())
                     self.wfile.flush()
                     _log.debug("message sent: %s", msg.txnr)
-                    send_status = {'status':True, 'future':f}
+                    send_status = {'status': True, 'future': f}
                 except Exception as e:
-                    send_status = {'status':False, 'exception':e}
+                    send_status = {'status': False, 'exception': e}
                 self.recv_q.put(send_status)
 
     def send_command(self, command: bytes, data: bytes, skip_buffer: bool = False) -> Future:
@@ -272,11 +272,11 @@ class RelpTCPClient:
                 raise
             new_conn = True
         send_data = {
-                    'command'       : command,
-                    'data'          : data,
-                    'new_conn'      : new_conn,
-                    'skip_buffer'   : skip_buffer,
-                    }
+            'command': command,
+            'data': data,
+            'new_conn': new_conn,
+            'skip_buffer': skip_buffer,
+        }
         self.send_q.put(send_data)
         status_data = self.recv_q.get()
         send_status = status_data['status']

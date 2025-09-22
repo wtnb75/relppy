@@ -260,7 +260,7 @@ def logger_tls_options(func):
 @click.option("--facility", type=str, default="LOCAL7", show_default=True)
 @click.argument("message", nargs=1)
 def logger_tls(address: tuple[str, int], message: str, logger_name: str,
-    log_level: str, priority: str, facility: str, context: ssl.SSLContext, **kwargs):
+               log_level: str, priority: str, facility: str, context: ssl.SSLContext, **kwargs):
     """RELP logging handler (TLS)"""
     logger = logging.getLogger(logger_name)
     logger.setLevel(log_level)
@@ -290,7 +290,7 @@ def logger_tls(address: tuple[str, int], message: str, logger_name: str,
 @click.option("--facility", type=str, default="LOCAL7", show_default=True)
 @click.argument("message", nargs=1)
 def logger(address: tuple[str, int], message: str, logger_name: str, log_level: str,
-    priority: str, facility: str, **kwargs):
+           priority: str, facility: str, **kwargs):
     """RELP logging handler"""
     logger = logging.getLogger(logger_name)
     logger.setLevel(log_level)

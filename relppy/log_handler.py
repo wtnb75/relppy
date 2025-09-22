@@ -20,7 +20,7 @@ class RelpHandler(logging.handlers.SysLogHandler):
         exception_on_emit=False,
         active_log_handlers=[],
         **kwargs,
-        ):
+    ):
 
         facility_id = "LOG_%s" % facility
         try:
@@ -50,15 +50,15 @@ class RelpHandler(logging.handlers.SysLogHandler):
         try:
             if self.context:
                 self.relp_client = RelpTlsClient(address=self.address,
-                                                context=self.context,
-                                                server_hostname=self.address[0],
-                                                **self.kwargs)
+                                                 context=self.context,
+                                                 server_hostname=self.address[0],
+                                                 **self.kwargs)
             else:
                 self.relp_client = RelpTCPClient(address=self.address, **self.kwargs)
         except Exception as e:
             self.connection_broken = True
             msg = ("Failed to connect to relp log server: %s: %s"
-                    % (self.address, e))
+                   % (self.address, e))
             self.logger.warning(msg)
             raise
 
