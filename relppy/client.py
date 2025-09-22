@@ -206,7 +206,7 @@ class RelpTCPClient:
                     data = send_data['data']
                     skip_buffer = send_data['skip_buffer']
                     new_conn = send_data['new_conn']
-                except Exception as e:
+                except Exception:
                     _log.warning("received wrong send data: %s", send_data)
                     continue
             if not skip_buffer:
@@ -215,7 +215,7 @@ class RelpTCPClient:
                     _log.warning("buffer full: bufsize=%s", len(self.resendbuf))
                     try_resend = True
                 if (time.time() - self.last_resend) >= self.resend_interval:
-                    if len(self.resendbuf) > 1:
+                    if len(self.resendbuf) > 0:
                         _log.warning("buffer resend interval reached: resend_interval=%s", self.resend_interval)
                         try_resend = True
                 if try_resend:
@@ -285,6 +285,7 @@ class RelpTCPClient:
             raise exception
         future = status_data['future']
         return future
+
 
 class RelpUnixClient(RelpTCPClient):
     def create_connection(self, address, **kwargs):
