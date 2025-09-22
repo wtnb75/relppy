@@ -20,8 +20,7 @@ class RelpHandler(logging.handlers.SysLogHandler):
         exception_on_emit=False,
         active_log_handlers=[],
         **kwargs,
-        ):
-
+    ):
         facility_id = "LOG_%s" % facility
         try:
             facility = getattr(logging.handlers.SysLogHandler, facility_id)
@@ -42,6 +41,7 @@ class RelpHandler(logging.handlers.SysLogHandler):
         self.exception_on_emit = exception_on_emit
         self.connection_broken = False
         self.active_log_handlers = active_log_handlers
+        self.reconnect_timeout = reconnect_timeout
         self.kwargs = kwargs
         logging.Handler.__init__(self)
         self.active_log_handlers.append(self)
@@ -49,16 +49,14 @@ class RelpHandler(logging.handlers.SysLogHandler):
     def createSocket(self):
         try:
             if self.context:
-                self.relp_client = RelpTlsClient(address=self.address,
-                                                context=self.context,
-                                                server_hostname=self.address[0],
-                                                **self.kwargs)
+                self.relp_client = RelpTlsClient(
+                    address=self.address, context=self.context, server_hostname=self.address[0], **self.kwargs
+                )
             else:
                 self.relp_client = RelpTCPClient(address=self.address, **self.kwargs)
         except Exception as e:
             self.connection_broken = True
-            msg = ("Failed to connect to relp log server: %s: %s"
-                    % (self.address, e))
+            msg = "Failed to connect to relp log server: %s: %s" % (self.address, e)
             self.logger.warning(msg)
             raise
 
@@ -76,23 +74,43 @@ class RelpHandler(logging.handlers.SysLogHandler):
                 pass
             self.release()
 
+    def _encodemsg(self, record):
+        msg = self.format(record)
+        if self.ident:
+            msg = self.ident + msg
+        if self.append_nul:
+            msg += "\000"
+
+        # We need to convert record level to lowercase, maybe this will
+        # change in the future.
+        prio = "<%d>" % self.encodePriority(self.facility, self.mapPriority(record.levelname))
+        prio = prio.encode("utf-8")
+        # Message is a string. Convert to bytes as required by RFC 5424
+        msg = msg.encode("utf-8")
+        msg = prio + msg
+        return msg
+
+    def _reconnect_send(self, msg):
+        reconnect_start = time.time()
+        spool_message = True
+        while True:
+            if (time.time() - reconnect_start) >= self.reconnect_timeout:
+                break
+            # Try to resend message.
+            try:
+                self.relp_client.send_command(b"syslog", msg)
+            except Exception:
+                self.connection_broken = True
+                spool_message = True
+            else:
+                self.connection_broken = False
+                spool_message = False
+                break
+        return spool_message
+
     def emit(self, record):
         try:
-            msg = self.format(record)
-            if self.ident:
-                msg = self.ident + msg
-            if self.append_nul:
-                msg += '\000'
-
-            # We need to convert record level to lowercase, maybe this will
-            # change in the future.
-            prio = '<%d>' % self.encodePriority(self.facility,
-                                                self.mapPriority(record.levelname))
-            prio = prio.encode('utf-8')
-            # Message is a string. Convert to bytes as required by RFC 5424
-            msg = msg.encode('utf-8')
-            msg = prio + msg
-
+            msg = self._encodemsg(record)
             if not self.relp_client:
                 self.createSocket()
             self.relp_client.send_command(b"syslog", msg)
@@ -106,27 +124,13 @@ class RelpHandler(logging.handlers.SysLogHandler):
                 if self.connection_broken:
                     spool_message = True
                 else:
-                    reconnect_start = time.time()
-                    while True:
-                        if (time.time() - reconnect_start) >= self.reconnect_timeout:
-                            break
-                        # Try to resend message.
-                        try:
-                            self.relp_client.send_command(b"syslog", msg)
-                        except Exception:
-                            self.connection_broken = True
-                            spool_message = True
-                        else:
-                            self.connection_broken = False
-                            spool_message = False
-                            break
+                    spool_message = self._reconnect_send(msg)
             else:
                 spool_message = True
-            if spool_message:
-                if self.spool_method:
-                    try:
-                        self.spool_method(record)
-                    except Exception as e:
-                        msg = "Failed to spool record: %s" % e
-                        self.logger.warning(msg)
+            if spool_message and self.spool_method:
+                try:
+                    self.spool_method(record)
+                except Exception as e:
+                    msg = "Failed to spool record: %s" % e
+                    self.logger.warning(msg)
             self.handleError(record)
