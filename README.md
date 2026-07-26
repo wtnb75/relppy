@@ -33,7 +33,7 @@ from relppy.client import RelpTCPClient
 
 with RelpTCPClient(("localhost", 10514)) as cl:
     for m in ["hello", "world"]:
-        fut= cl.send_command(b"syslog", m.encode())
+        fut = cl.send_command(b"syslog", m.encode())
         res = fut.result()
         print(f"sent: {m} -> {res}")
 ```
@@ -69,7 +69,7 @@ from relppy.log_handler import RelpHandler
 
 log_handler = RelpHandler(address=(server, port), facility="LOCAL7")
 
-formatter = logging.Formatter('%(name)s: [%(levelname)s] %(message)s')
+formatter = logging.Formatter("%(name)s: [%(levelname)s] %(message)s")
 log_handler.setFormatter(formatter)
 logger = logging.getLogger("my_logger")
 logger.addHandler(log_handler)
@@ -86,14 +86,13 @@ context = ssl.create_default_context(
     purpose=ssl.Purpose.SERVER_AUTH,
     cafile="/path/to/ca.cert",
 )
-context.load_cert_chain(certfile="/path/to/client-cert.pem",
-                        keyfile="/path/to/client-key.pem")
+context.load_cert_chain(
+    certfile="/path/to/client-cert.pem", keyfile="/path/to/client-key.pem"
+)
 
-log_handler = RelpHandler(address=(server, port),
-                        facility="LOCAL7",
-                        context=context)
+log_handler = RelpHandler(address=(server, port), facility="LOCAL7", context=context)
 
-formatter = logging.Formatter('%(name)s: [%(levelname)s] %(message)s')
+formatter = logging.Formatter("%(name)s: [%(levelname)s] %(message)s")
 log_handler.setFormatter(formatter)
 
 logger = logging.getLogger("my_logger")

@@ -1,8 +1,9 @@
-import unittest
 import socketserver
 import threading
-from relppy.protocol import Message
+import unittest
+
 from relppy.client import RelpTCPClient
+from relppy.protocol import Message
 from relppy.server import RelpStreamHandler
 
 
