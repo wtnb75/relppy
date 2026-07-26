@@ -1,6 +1,7 @@
 import socketserver
-from .protocol import Message, relp_ua
 from logging import getLogger
+
+from .protocol import Message, relp_ua
 
 _log = getLogger(__name__)
 
@@ -9,6 +10,7 @@ class RelpStreamHandler(socketserver.StreamRequestHandler):
     """
     RELP server
     """
+
     autoack = True
 
     def finish(self):
@@ -49,7 +51,11 @@ class RelpStreamHandler(socketserver.StreamRequestHandler):
                 self.client_nego[k.decode()] = v.decode().split(",")
         _log.info("client negotiation: %s", self.client_nego)
         ignore = {"do_any", "do_open", "do_close"}
-        command_set = {x.removeprefix("do_") for x in dir(self) if x.startswith("do_") and x not in ignore}
+        command_set = {
+            x.removeprefix("do_")
+            for x in dir(self)
+            if x.startswith("do_") and x not in ignore
+        }
         client_commands = set(self.client_nego.get("commands", []))
         commands = ",".join(command_set & client_commands)
         return f"relp_version=1\nrelp_software={relp_ua}\ncommands={commands}"
@@ -77,8 +83,8 @@ class RelpStreamHandler(socketserver.StreamRequestHandler):
         else:
             datalen = int(l1[2])
             data = l1[3]
-            if len(data) != datalen+1:
-                data += self.rfile.read(datalen-len(data)+1)
+            if len(data) != datalen + 1:
+                data += self.rfile.read(datalen - len(data) + 1)
             if data[-1] != ord(b"\n"):
                 _log.warning("invalid message tail: %s", data)
             else:

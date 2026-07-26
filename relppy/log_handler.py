@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
-import time
-import socket
 import logging
 import logging.handlers
+import socket
+import time
 
-from .client import RelpTlsClient
-from .client import RelpTCPClient
+from .client import RelpTCPClient, RelpTlsClient
 
 
 class RelpHandler(logging.handlers.SysLogHandler):
@@ -18,14 +16,16 @@ class RelpHandler(logging.handlers.SysLogHandler):
         logger=None,
         spool_method=None,
         exception_on_emit=False,
-        active_log_handlers=[],
+        active_log_handlers=None,
         **kwargs,
     ):
-        facility_id = "LOG_%s" % facility
+        if active_log_handlers is None:
+            active_log_handlers = []
+        facility_id = f"LOG_{facility}"
         try:
             facility = getattr(logging.handlers.SysLogHandler, facility_id)
         except Exception:
-            msg = "Unknown facility: %s" % facility
+            msg = f"Unknown facility: {facility}"
             raise Exception(msg)
 
         if logger:
@@ -50,13 +50,16 @@ class RelpHandler(logging.handlers.SysLogHandler):
         try:
             if self.context:
                 self.relp_client = RelpTlsClient(
-                    address=self.address, context=self.context, server_hostname=self.address[0], **self.kwargs
+                    address=self.address,
+                    context=self.context,
+                    server_hostname=self.address[0],
+                    **self.kwargs,
                 )
             else:
                 self.relp_client = RelpTCPClient(address=self.address, **self.kwargs)
         except Exception as e:
             self.connection_broken = True
-            msg = "Failed to connect to relp log server: %s: %s" % (self.address, e)
+            msg = f"Failed to connect to relp log server: {self.address}: {e}"
             self.logger.warning(msg)
             raise
 
@@ -83,7 +86,7 @@ class RelpHandler(logging.handlers.SysLogHandler):
 
         # We need to convert record level to lowercase, maybe this will
         # change in the future.
-        prio = "<%d>" % self.encodePriority(self.facility, self.mapPriority(record.levelname))
+        prio = f"<{self.encodePriority(self.facility, self.mapPriority(record.levelname))}>"
         prio = prio.encode("utf-8")
         # Message is a string. Convert to bytes as required by RFC 5424
         msg = msg.encode("utf-8")
@@ -131,6 +134,6 @@ class RelpHandler(logging.handlers.SysLogHandler):
                 try:
                     self.spool_method(record)
                 except Exception as e:
-                    msg = "Failed to spool record: %s" % e
+                    msg = f"Failed to spool record: {e}"
                     self.logger.warning(msg)
             self.handleError(record)

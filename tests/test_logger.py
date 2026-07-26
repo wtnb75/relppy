@@ -1,10 +1,11 @@
-import unittest
+import logging
 import socketserver
 import threading
+import unittest
+
+from relppy.log_handler import RelpHandler
 from relppy.protocol import Message
 from relppy.server import RelpStreamHandler
-import logging
-from relppy.log_handler import RelpHandler
 
 
 class MyHandler(RelpStreamHandler):
@@ -27,7 +28,9 @@ class TestLogger(unittest.TestCase):
         self.srv = MyServer(("localhost", 0), MyHandler)
         self.th = threading.Thread(target=self.srv.serve_forever)
         self.th.start()
-        self.log_handler = RelpHandler(address=self.srv.server_address, facility="LOCAL7")
+        self.log_handler = RelpHandler(
+            address=self.srv.server_address, facility="LOCAL7"
+        )
 
         self.formatter = logging.Formatter("%(name)s: [%(levelname)s] %(message)s")
         self.log_handler.setFormatter(self.formatter)

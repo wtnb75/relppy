@@ -1,11 +1,13 @@
+import queue
 import socket
-from concurrent.futures import ThreadPoolExecutor, Future, wait as futures_wait
+import ssl
 import threading
 import time
-import queue
-import ssl
-from .protocol import Message, relp_ua
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import wait as futures_wait
 from logging import getLogger
+
+from .protocol import Message, relp_ua
 
 _log = getLogger(__name__)
 
@@ -52,13 +54,15 @@ class RelpTCPClient:
         try:
             self.relp_nego()
         except Exception as e:
-            _log.warning("Failed to negotiate connection: %s" % e)
+            _log.warning(f"Failed to negotiate connection: {e}")
             self.close()
             raise
 
     def relp_nego(self):
         offer = f"\nrelp_version=1\nrelp_software={relp_ua}\ncommands=syslog"
-        res: bytes = self.send_command(b"open", offer.encode("ascii"), skip_buffer=True).result()
+        res: bytes = self.send_command(
+            b"open", offer.encode("ascii"), skip_buffer=True
+        ).result()
         self.negodata: dict[str, list[str]] = {}
         for i in res.splitlines()[1:]:
             ll = i.split(b"=", 1)
@@ -134,8 +138,8 @@ class RelpTCPClient:
 
     def __str__(self):
         if hasattr(self, "sock"):
-            return "%s(%s <- %s)" % (self.__class__.__name__, self.sock.getpeername(), self.sock.getsockname())
-        return "%s(not connected)" % (self.__class__.__name__)
+            return f"{self.__class__.__name__}({self.sock.getpeername()} <- {self.sock.getsockname()})"
+        return f"{self.__class__.__name__}(not connected)"
 
     def _gotack(self, txnr: int, data: bytes):
         try:
@@ -169,7 +173,13 @@ class RelpTCPClient:
                     data += self.rfile.read(datalen - len(data) + 1)
                 _log.debug("message: %s msglen=%s", command, len(data))
             data = data.removesuffix(b"\n")
-            _log.debug("got txnr=%s, command=%s, datalen=%s/%s", txnr, command, datalen, len(data))
+            _log.debug(
+                "got txnr=%s, command=%s, datalen=%s/%s",
+                txnr,
+                command,
+                datalen,
+                len(data),
+            )
             if command == b"rsp":
                 _log.debug("ack %d", txnr)
                 self._gotack(txnr, data)
@@ -217,10 +227,14 @@ class RelpTCPClient:
         if len(self.resendbuf) > self.resend_bufsize:
             _log.warning("buffer full: bufsize=%s", len(self.resendbuf))
             try_resend = True
-        if (time.time() - self.last_resend) >= self.resend_interval:
-            if len(self.resendbuf) > 0:
-                _log.warning("buffer resend interval reached: resend_interval=%s", self.resend_interval)
-                try_resend = True
+        if (time.time() - self.last_resend) >= self.resend_interval and len(
+            self.resendbuf
+        ) > 0:
+            _log.warning(
+                "buffer resend interval reached: resend_interval=%s",
+                self.resend_interval,
+            )
+            try_resend = True
         if try_resend:
             self.resend(new_conn=new_conn)
             _log.info("sleep %f second", self.resend_wait)
@@ -244,7 +258,9 @@ class RelpTCPClient:
                 send_status = {"status": False, "exception": e}
             self.recv_q.put(send_status)
 
-    def send_command(self, command: bytes, data: bytes, skip_buffer: bool = False) -> Future:
+    def send_command(
+        self, command: bytes, data: bytes, skip_buffer: bool = False
+    ) -> Future:
         _log.debug("send %s msglen=%s (%s)", command, len(data), data)
         # Check if we are connected.
         new_conn = False
@@ -272,7 +288,7 @@ class RelpTCPClient:
             try:
                 self.relp_nego()
             except Exception as e:
-                _log.warning("Failed to negotiate connection: %s" % e)
+                _log.warning(f"Failed to negotiate connection: {e}")
                 raise
             new_conn = True
         send_data = {
@@ -300,7 +316,9 @@ class RelpUnixClient(RelpTCPClient):
 
 
 class RelpTlsClient(RelpTCPClient):
-    def create_connection(self, address, context: ssl.SSLContext, server_hostname=None, **kwargs):
+    def create_connection(
+        self, address, context: ssl.SSLContext, server_hostname=None, **kwargs
+    ):
         sock = socket.create_connection(address, **kwargs)
         sock = context.wrap_socket(sock, server_hostname=server_hostname)
         _log.debug("ssl: version=%s, cipher=%s", sock.version(), sock.cipher())

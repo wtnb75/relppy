@@ -1,13 +1,15 @@
-import pytest
 import socketserver
-import threading
-import tempfile
 import ssl
-from pathlib import Path
+import tempfile
+import threading
 from logging import getLogger
+from pathlib import Path
+
+import pytest
+
+from relppy.client import RelpTCPClient, RelpTlsClient, RelpUnixClient
 from relppy.protocol import Message
 from relppy.server import RelpStreamHandler
-from relppy.client import RelpTCPClient, RelpUnixClient, RelpTlsClient
 
 _log = getLogger(__name__)
 
@@ -21,6 +23,7 @@ class MyHandler(RelpStreamHandler):
 def unix_server():
     class _T(socketserver.UnixStreamServer, socketserver.ThreadingMixIn):
         allow_reuse_address = True
+
     with tempfile.TemporaryDirectory() as td:
         address = str(Path(td) / "relp.sock")
         srv = _T(address, MyHandler)
@@ -39,6 +42,7 @@ def tcp_server():
         def verify_request(self, request, client_address):
             _log.info("connect from: %s", client_address)
             return True
+
     address = ("127.0.0.1", 0)
     srv = _T(address, MyHandler)
     th = threading.Thread(target=srv.serve_forever)
@@ -51,6 +55,7 @@ def tcp_server():
 @pytest.fixture()
 def tls_server():
     import ssl
+
     from OpenSSL import crypto
 
     class _T(socketserver.TCPServer, socketserver.ThreadingMixIn):
@@ -68,10 +73,10 @@ def tls_server():
     cert.get_subject().CN = "localhost"
     cert.set_serial_number(0)
     cert.gmtime_adj_notBefore(0)
-    cert.gmtime_adj_notAfter(10*365*24*60*60)
+    cert.gmtime_adj_notAfter(10 * 365 * 24 * 60 * 60)
     cert.set_issuer(cert.get_subject())
     cert.set_pubkey(k)
-    cert.sign(k, 'sha512')
+    cert.sign(k, "sha512")
 
     with tempfile.TemporaryDirectory() as td:
         certfile = Path(td) / "cert.pem"
@@ -118,7 +123,9 @@ def test_tls(benchmark, tls_server):
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    with RelpTlsClient(tls_server.server_address, context=ctx, server_hostname="localhost") as cl:
+    with RelpTlsClient(
+        tls_server.server_address, context=ctx, server_hostname="localhost"
+    ) as cl:
         benchmark(lambda: cl.send_command(b"syslog", b"").result())
 
 
@@ -127,5 +134,7 @@ def test_tls_long(benchmark, tls_server):
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    with RelpTlsClient(tls_server.server_address, context=ctx, server_hostname="localhost") as cl:
+    with RelpTlsClient(
+        tls_server.server_address, context=ctx, server_hostname="localhost"
+    ) as cl:
         benchmark(lambda: cl.send_command(b"syslog", msg).result())

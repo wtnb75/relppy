@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "relppy"
+dynamic = ["version"]
+description = "RELP protocol server"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Watanabe Takashi", email = "wtnb75@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: System :: Networking",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "click",
+]
+
+[project.scripts]
+relppy = "relppy.main:cli"
+
+[project.urls]
+Homepage = "https://github.com/wtnb75/relppy"
+
+[tool.hatch.version]
+path = "relppy/version.py"
+pattern = "VERSION = ['\"](?P<version>[^'\"]+)['\"]"
+
+[tool.hatch.build.targets.wheel]
+packages = ["relppy"]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-github-actions-annotate-failures",
+    "pytest-benchmark",
+    "pyOpenSSL",
+    "ruff",
+    "pdoc",
+]
+
+[tool.ruff.lint]
+# BLE001/TRY002: relppy's network client/handler code intentionally catches
+# bare Exception around socket and negotiation calls (to keep a background
+# sender/acker thread or a syslog handler alive on any I/O error) and raises
+# plain Exception for a couple of CLI input-validation cases. Narrowing these
+# or introducing a custom exception hierarchy is a behavioral/design change
+# out of scope for this packaging migration, so they are intentionally
+# ignored rather than mechanically "fixed".
+ignore = ["BLE001", "TRY002"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+addopts = "--cov-report=html:cover --cov-report=term --cov-branch --cov-reset --cov=relppy --doctest-modules"

@@ -1,6 +1,7 @@
 import socket
-from logging import getLogger
 from dataclasses import dataclass
+from logging import getLogger
+
 from .version import VERSION
 
 _log = getLogger(__name__)
@@ -18,16 +19,19 @@ class Message:
 
     def pack(self) -> bytes:
         if len(self.data) == 0:
-            return b" ".join([
-                str(self.txnr).encode("ascii"),
-                self.command, b"0\n"])
+            return b" ".join([str(self.txnr).encode("ascii"), self.command, b"0\n"])
 
-        return b" ".join([
-            str(self.txnr).encode("ascii"),
-            self.command,
-            str(len(self.data)).encode("ascii"),
-            self.data
-        ])+b"\n"
+        return (
+            b" ".join(
+                [
+                    str(self.txnr).encode("ascii"),
+                    self.command,
+                    str(len(self.data)).encode("ascii"),
+                    self.data,
+                ]
+            )
+            + b"\n"
+        )
 
     def unpack(self, bin: bytes) -> int:
         data = bin.split(b" ", 3)
@@ -38,7 +42,7 @@ class Message:
             self.txnr = int(data[0])
             self.command = data[1]
             self.data = b""
-            return len(bin)-len(data[2])+2
+            return len(bin) - len(data[2]) + 2
         elif len(data) == 4:
             self.txnr = int(data[0])
             self.command = data[1]
@@ -48,7 +52,7 @@ class Message:
                 raise ValueError(f"message length mismatch: {bin}")
             if data[3][datalen] != ord(b"\n"):
                 raise ValueError(f"invalid message tail: {datalen} of {data[3]}")
-            return len(bin)-len(data[3])+datalen+1
+            return len(bin) - len(data[3]) + datalen + 1
 
     def send(self, sock: socket.socket):
         _log.debug("send %s", self)
@@ -74,7 +78,7 @@ class Message:
     def __str__(self):
         cmd = self.command.decode("utf-8", errors="backslashreplace")
         dat = self.data.decode("utf-8", errors="backslashreplace")
-        return f"txnr={self.txnr} command={repr(cmd)} data={repr(dat)}"
+        return f"txnr={self.txnr} command={cmd!r} data={dat!r}"
 
 
 def process_io(ifp: socket.socket, auto_ack: bool):
@@ -121,5 +125,5 @@ def process_io(ifp: socket.socket, auto_ack: bool):
                 if auto_ack:
                     _log.debug("send ack: %s", msg.txnr)
                     msg.sendAck(ifp)
-                buf = l1[1][datalen+1:]
+                buf = l1[1][datalen + 1 :]
             _log.debug("rest: len=%s", len(buf))
